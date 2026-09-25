@@ -1,0 +1,51 @@
+name: Build Custom GSI ROM
+
+on:
+  workflow_dispatch: # Allows you to manually click a button to start the build
+
+jobs:
+  build-rom:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository Code
+      uses: actions/checkout@v4
+
+    - name: Install Android Customization Tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y simg2img img2simg android-sdk-libsparse-utils ext4utils
+
+    - name: Download Base GSI Image
+      run: |
+        # Download a clean community GSI base (Example: AOSP 14/15/16 GSI)
+        # Replace this URL with the direct link to your preferred base GSI image
+        wget -O system.img "https://github.com"
+        xz -d system.img
+
+    - name: Extract, Modify, and Re-pack ROM
+      run: |
+        mkdir -p workspace/sys_mount
+        
+        # Unpack sparse image to raw image
+        simg2img system.img raw_system.img
+        
+        # Mount the file system to make edits
+        sudo mount -o loop raw_system.img workspace/sys_mount
+        
+        # --- APPLY YOUR CUSTOM CHANGES HERE ---
+        echo "Applying your custom ROM branding..."
+        echo "ro.rom.custom.name=MyCustomOS_v1.0" | sudo tee -a workspace/sys_mount/system/build.prop
+        echo "ro.config.hw_quickpoweron=true" | sudo tee -a workspace/sys_mount/system/build.prop
+        # --------------------------------------
+        
+        # Re-pack the modified files back into a flashable system image
+        sudo make_ext4fs -s -l 3G -a system output_system.img workspace/sys_mount
+        sudo umount workspace/sys_mount
+        img2simg output_system.img MyCustomROM_Camon50Ultra.img
+
+    - name: Upload Finished Custom ROM
+      uses: actions/upload-artifact@v4
+      with:
+        name: Custom-GSI-ROM
+        path: MyCustomROM_Camon50Ultra.img
