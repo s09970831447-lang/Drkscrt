@@ -1,7 +1,7 @@
 name: Build Custom GSI ROM
 
 on:
-  workflow_dispatch: # Allows you to manually click a button to start the build
+  workflow_dispatch: # Allows you to manually trigger the build from the Actions tab
 
 jobs:
   build-rom:
@@ -14,12 +14,12 @@ jobs:
     - name: Install Android Customization Tools
       run: |
         sudo apt-get update
-        sudo apt-get install -y simg2img img2simg android-sdk-libsparse-utils ext4utils
+        sudo apt-get install -y simg2img img2simg android-sdk-libsparse-utils e2fsprogs
 
     - name: Download Base GSI Image
       run: |
-        # Download a clean community GSI base (Example: AOSP 14/15/16 GSI)
-        # Replace this URL with the direct link to your preferred base GSI image
+        # Downloads a clean community GSI base (Example: AOSP 14/15/16 structure)
+        # You can swap this URL with your preferred base GSI image link
         wget -O system.img "https://github.com"
         xz -d system.img
 
@@ -27,19 +27,38 @@ jobs:
       run: |
         mkdir -p workspace/sys_mount
         
-        # Unpack sparse image to raw image
+        # Unpack sparse image format to raw layout
         simg2img system.img raw_system.img
         
-        # Mount the file system to make edits
+        # Mount the file system partition to allow file adjustments
         sudo mount -o loop raw_system.img workspace/sys_mount
         
         # --- APPLY YOUR CUSTOM CHANGES HERE ---
         echo "Applying your custom ROM branding..."
         echo "ro.rom.custom.name=MyCustomOS_v1.0" | sudo tee -a workspace/sys_mount/system/build.prop
         echo "ro.config.hw_quickpoweron=true" | sudo tee -a workspace/sys_mount/system/build.prop
+
+        # 1. Automatic custom system apps installation pathway
+        if [ -d "my_custom_files/app" ] && [ "$(ls -A my_custom_files/app)" ]; then
+          echo "Injecting your custom system apps..."
+          sudo mkdir -p workspace/sys_mount/system/app/MyCustomApp
+          sudo cp my_custom_files/app/*.apk workspace/sys_mount/system/app/MyCustomApp/
+          sudo chmod 644 workspace/sys_mount/system/app/MyCustomApp/*.apk
+        else
+          echo "No custom apps detected in my_custom_files/app. Skipping..."
+        fi
+
+        # 2. Automatic boot animation injection pathway
+        if [ -f "my_custom_files/media/bootanimation.zip" ]; then
+          echo "Injecting your custom boot animation..."
+          sudo cp my_custom_files/media/bootanimation.zip workspace/sys_mount/system/media/
+          sudo chmod 644 workspace/sys_mount/system/media/bootanimation.zip
+        else
+          echo "No bootanimation.zip found in my_custom_files/media. Skipping..."
+        fi
         # --------------------------------------
         
-        # Re-pack the modified files back into a flashable system image
+        # Compile modified system files back into a clean flashable image
         sudo make_ext4fs -s -l 3G -a system output_system.img workspace/sys_mount
         sudo umount workspace/sys_mount
         img2simg output_system.img MyCustomROM_Camon50Ultra.img
